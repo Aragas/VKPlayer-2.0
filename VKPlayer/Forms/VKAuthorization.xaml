@@ -1,0 +1,25 @@
+﻿<Window
+    x:Class="VKPlayer.Forms.VKAuthorization"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="clr-namespace:VKPlayer.Forms"
+    mc:Ignorable="d"
+    Title="VK Authorization" Height="170" Width="250">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resource.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid>
+        <Grid Margin="5,5,5,5">
+            <TextBox x:Name="loginTextBox" HorizontalAlignment="Stretch" Height="25" VerticalAlignment="Top" Style="{StaticResource WaterMarkTextBox}" local:WaterMarkTextHelper.WatermarkText="Login"/>
+            <PasswordBox x:Name="passTextBox" HorizontalAlignment="Stretch" Height="25" VerticalAlignment="Top" Margin="0,30,0,0" local:WaterMarkTextHelper.WatermarkText="Password"/>
+            <TextBox x:Name="twofacorTextBox" HorizontalAlignment="Stretch" Height="25" VerticalAlignment="Top" Margin="0,60,0,0" Style="{StaticResource WaterMarkTextBox}" local:WaterMarkTextHelper.WatermarkText="Two Factor"/>
+            <Button  x:Name="confirmButton" HorizontalAlignment="Stretch" Content="Confirm" VerticalAlignment="Bottom" Margin="10,0" Click="confirmButton_Click"/>
+        </Grid>
+    </Grid>
+</Window>
