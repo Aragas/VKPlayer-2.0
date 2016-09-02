@@ -18,14 +18,14 @@ using VKPlayer.Forms;
 namespace VKPlayer.Plugin
 {
     /// <summary>
-    /// Каждый скин содержит только один подобный класс
+    /// Each skin has only one such class instance.
     /// </summary>
     public class AudioPlayerSkin : PluginSkin
     {
-        public Player AudioPlayer;
+        public Player AudioPlayer { get; set; }
 
-        internal VkApi API;
-        internal VKAuthorization AuthorizationForm;
+        internal VkApi API { get; set; }
+        internal VKAuthorization AuthorizationForm { get; set; }
 
 
         public AudioPlayerSkin(RainmeterAPI api) : base(api) { }
@@ -37,12 +37,33 @@ namespace VKPlayer.Plugin
 
             AudioPlayer = new Player(this);
         }
+        private void API_OnTokenExpires(VkApi api)
+        {
+            AuthorizationForm = new VKAuthorization();
+            AuthorizationForm.ConfirmClicked += AuthorizationForm_SubmitClicked;
+            AuthorizationForm.ShowDialog();
+        }
+        private void AuthorizationForm_SubmitClicked(string login, string pass, string twofactor)
+        {
+            AuthorizationForm.Close();
+
+            try
+            {
+                API.Authorize(new ApiAuthParams
+                {
+                    ApplicationId = 3328403,
+                    Login = login,
+                    Password = pass,
+                    Settings = Settings.Audio,
+                    TwoFactorAuthorization = () => twofactor,
+                });
+            }
+            catch (VkApiAuthorizationException) { }
+        }
         public override void Closed()
         {
             AudioPlayer.Dispose();
         }
-
-
 
         public void ExecuteBang(string command)
         {
@@ -62,51 +83,27 @@ namespace VKPlayer.Plugin
                 AudioPlayer.Execute(command);
             }
         }
-
-        private void API_OnTokenExpires(VkApi api)
-        {
-            AuthorizationForm = new VKAuthorization();
-            AuthorizationForm.ConfirmClicked += AuthorizationForm_SubmitClicked;
-            AuthorizationForm.ShowDialog();
-        }
-
-        private void AuthorizationForm_SubmitClicked(string login, string pass, string twofactor)
-        {
-            AuthorizationForm.Close();
-
-            try
-            {
-                API.Authorize(new ApiAuthParams
-                {
-                    ApplicationId = 3328403,
-                    Login = login,
-                    Password = pass,
-                    Settings = Settings.Audio,
-                    TwoFactorAuthorization = () => twofactor,
-                });
-            }
-            catch (VkApiAuthorizationException) { }
-        }
     }
 
     public enum AudioPlayerMeasureEnum
     {
-        Credits,
         Artist,
         Title,
-        NextArtist,
-        NextTitle,
+        Number,
+        File,
         Duration,
         Position,
-        State,
+        Progress,
         Repeat,
         Shuffle,
+        State,
         Volume,
-        Progress,
-        SaveToFile
+        
+        SaveToFile,
+        Credits,
     }
     /// <summary>
-    /// Каждый скин создает класс для каждого значения.
+    /// Each skin has multiple instances of this class, one for each meter.
     /// </summary>
     public class AudioPlayerMeasure : PluginMeasure<AudioPlayerMeasureEnum>
     {
@@ -121,6 +118,9 @@ namespace VKPlayer.Plugin
         {
             switch (TypeEnum)
             {
+                case AudioPlayerMeasureEnum.Number:
+                    return Player.Number;
+
                 case AudioPlayerMeasureEnum.Duration:
                     return Player.Duration;
 
@@ -151,17 +151,20 @@ namespace VKPlayer.Plugin
         {
             switch (TypeEnum)
             {
-                case AudioPlayerMeasureEnum.Credits:
-                    return "VKPlayer by Aragas (Aragasas)";
-
                 case AudioPlayerMeasureEnum.Artist:
                     return string.IsNullOrEmpty(Player.Artist) ? "Not Initialized" : Player.Artist;
 
                 case AudioPlayerMeasureEnum.Title:
                     return string.IsNullOrEmpty(Player.Title) ? "Click Play" : Player.Title;
 
+                case AudioPlayerMeasureEnum.File:
+                    return string.Empty;
+
+                case AudioPlayerMeasureEnum.Credits:
+                    return "VKPlayer by Aragas (Aragasas)";
+
                 default:
-                    return null;
+                    return string.Empty;
             }
         }
 

@@ -70,6 +70,8 @@ namespace VKPlayer.Plugin
 
         private Uri Url => AudioList[_currentIndex].Url;
 
+        public int Number => _currentIndex + 1;
+
         public double Duration
         {
             get
