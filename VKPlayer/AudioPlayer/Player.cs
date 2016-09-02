@@ -1,22 +1,26 @@
-﻿using NAudio.CoreAudioApi;
-using NAudio.Wave;
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+
+using NAudio.CoreAudioApi;
+using NAudio.Wave;
+
+using Rainmeter;
+
 using VkNet.Model;
 using VkNet.Model.Attachments;
 using VkNet.Model.RequestParams;
+
 using VKPlayer.AudioPlayer;
 using VKPlayer.Plugin;
 
-namespace RainMeasure.AudioPlayer
+namespace VKPlayer.Plugin
 {
 
-    public class Player
+    public class Player : IDisposable
     {
         private AudioDownloader AudioDownloader;
         private WaveChannel32 AudioStream;
@@ -32,8 +36,8 @@ namespace RainMeasure.AudioPlayer
                     return _audioList;
 
                 User user;
-                AudioGetParams @params = new AudioGetParams { OwnerId = ((AudioPlayerSkin) Skin).ShitHandler.API.UserId };
-                _audioList = new List<Audio>(((AudioPlayerSkin) Skin).ShitHandler.API.Audio.Get(out user, @params));
+                AudioGetParams @params = new AudioGetParams { OwnerId = ((AudioPlayerSkin) Skin).API.UserId };
+                _audioList = new List<Audio>(((AudioPlayerSkin) Skin).API.Audio.Get(out user, @params));
                 return _audioList;
             }
         }
@@ -356,5 +360,14 @@ namespace RainMeasure.AudioPlayer
         }
 
         #endregion Execute
+
+        public void Dispose()
+        {
+            AudioDownloader?.Stop();
+            AudioStream?.Dispose();
+            OutputDevice?.Dispose();
+
+            _audioList?.Clear();
+        }   
     }
 }

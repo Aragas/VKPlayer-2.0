@@ -1,84 +1,82 @@
-﻿using RainMeasure;
-using RainMeasure.AudioPlayer;
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+
+using Rainmeter;
+
 using VkNet;
 using VkNet.Enums.Filters;
 using VkNet.Exception;
+
+using VKPlayer.AudioPlayer;
 using VKPlayer.Forms;
 
 namespace VKPlayer.Plugin
 {
-    public class ShitHandler
-    {
-        public Player AudioPlayer { get; }
-
-        internal VkApi API = new VkApi();
-        internal VKAuthorization AuthorizationForm;
-
-        public ShitHandler(PluginSkin skin) { AudioPlayer = new Player(skin); }
-    }
     /// <summary>
     /// Каждый скин содержит только один подобный класс
     /// </summary>
     public class AudioPlayerSkin : PluginSkin
     {
-        public ShitHandler ShitHandler { get; set; }
+        public Player AudioPlayer;
 
-        
-        public AudioPlayerSkin(RainmeterAPI api) : base(api) { /* AudioPlayer = new Player(this); */ }
+        internal VkApi API;
+        internal VKAuthorization AuthorizationForm;
+
+
+        public AudioPlayerSkin(RainmeterAPI api) : base(api) { }
 
         public override void Created()
         {
-            ShitHandler = new ShitHandler(this);
+            API = new VkApi();
+            API.OnTokenExpires += API_OnTokenExpires;
+
+            AudioPlayer = new Player(this);
         }
         public override void Closed()
         {
+            AudioPlayer.Dispose();
         }
 
 
 
         public void ExecuteBang(string command)
         {
-            if (!ShitHandler.API.IsAuthorized)
+            if (!API.IsAuthorized)
             {
-                ShitHandler.API.OnTokenExpires += API_OnTokenExpires;
+                AuthorizationForm = new VKAuthorization();
+                AuthorizationForm.ConfirmClicked += AuthorizationForm_SubmitClicked;
+                AuthorizationForm.ShowDialog();
 
-                ShitHandler.AuthorizationForm = new VKAuthorization();
-                ShitHandler.AuthorizationForm.ConfirmClicked += AuthorizationForm_SubmitClicked;
-                ShitHandler.AuthorizationForm.ShowDialog();
-
-                if (!ShitHandler.API.IsAuthorized)
+                if (!API.IsAuthorized)
                     return;
 
-                ShitHandler.AudioPlayer.Execute(command);
+                AudioPlayer.Execute(command);
             }
             else
             {
-                ShitHandler.AudioPlayer.Execute(command);
+                AudioPlayer.Execute(command);
             }
         }
 
         private void API_OnTokenExpires(VkApi api)
         {
-            ShitHandler.AuthorizationForm = new VKAuthorization();
-            ShitHandler.AuthorizationForm.ConfirmClicked += AuthorizationForm_SubmitClicked;
-            ShitHandler.AuthorizationForm.ShowDialog();
+            AuthorizationForm = new VKAuthorization();
+            AuthorizationForm.ConfirmClicked += AuthorizationForm_SubmitClicked;
+            AuthorizationForm.ShowDialog();
         }
 
         private void AuthorizationForm_SubmitClicked(string login, string pass, string twofactor)
         {
-            ShitHandler.AuthorizationForm.Close();
+            AuthorizationForm.Close();
 
             try
             {
-                ShitHandler.API.Authorize(new ApiAuthParams
+                API.Authorize(new ApiAuthParams
                 {
                     ApplicationId = 3328403,
                     Login = login,
@@ -113,7 +111,7 @@ namespace VKPlayer.Plugin
     public class AudioPlayerMeasure : PluginMeasure<AudioPlayerMeasureEnum>
     {
         public AudioPlayerSkin AudioPlayerSkin => (AudioPlayerSkin) Skin;
-        public Player Player => AudioPlayerSkin.ShitHandler.AudioPlayer;
+        public Player Player => AudioPlayerSkin.AudioPlayer;
 
         public AudioPlayerMeasure(string pluginType, PluginSkin skin, RainmeterAPI api) : base(pluginType, skin, api) { }
 

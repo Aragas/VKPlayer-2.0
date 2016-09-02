@@ -32,9 +32,10 @@ namespace Rainmeter
 
         public string Path { get; }
 
+        internal PluginSkin() { }
         public PluginSkin(RainmeterAPI api)
         {
-            Path = api.ReadPath("PluginType", "");
+            Path = api.ReadPath(PluginMeasure.PluginMeasureName, "");
             Path = Path.Replace("\\" + Path.Split('\\')[7], "\\");
         }
 
@@ -42,11 +43,25 @@ namespace Rainmeter
         public abstract void Closed();
     }
 
+    /// <summary>
+    /// A Measure that will return any value requested by Rainmeter. Can receive command via ExecuteBang(COMMAND).
+    /// </summary>
     public abstract class PluginMeasure
     {
+        /// <summary>
+        /// Specifies which Measure should be used.
+        /// </summary>
+        public const string PluginMeasureName = "PluginMeasureName";
+        /// <summary>
+        /// Specifies which type in a Measure should be used.
+        /// </summary>
+        public const string PluginMeasureType = "PluginMeasureType";
+
+
         public PluginSkin Skin { get; }
         public string Path => Skin.Path;
 
+        internal PluginMeasure() { }
         public PluginMeasure(PluginSkin skin, RainmeterAPI api) { Skin = skin; }
 
         public abstract void Reload(RainmeterAPI api, ref double maxValue);
@@ -55,37 +70,44 @@ namespace Rainmeter
         public abstract void ExecuteBang(string command);
         public abstract void Finalize();
     }
+    /// <summary>
+    /// A Measure that will return any value requested by Rainmeter. Can receive command via ExecuteBang(COMMAND).
+    /// </summary>
+    /// <typeparam name="TEnum">An Enumerable that will specify which Measure type to use</typeparam>
     public abstract class PluginMeasure<TEnum> : PluginMeasure where TEnum : struct, IConvertible
     {
         public TEnum TypeEnum { get; }
 
-        public PluginMeasure(string MeasureType, PluginSkin skin, RainmeterAPI api) : base(skin, api)
+        public PluginMeasure(string measureType, PluginSkin skin, RainmeterAPI api) : base(skin, api)
         {
             if (!typeof(TEnum).IsEnum)
                 throw new ArgumentException("TEnum must be an enumerated type");
 
             TEnum typeEnum = default(TEnum);
-            if (!Enum.TryParse<TEnum>(MeasureType, true, out typeEnum))
-            {
-                RainmeterAPI.Log(RainmeterAPI.LogType.Error, $"{System.IO.Path.GetFileName(Assembly.GetExecutingAssembly().Location)} MeasureType={MeasureType} not valid.");
-            }
-
+            if (!Enum.TryParse<TEnum>(measureType, true, out typeEnum))
+                RainmeterAPI.Log(RainmeterAPI.LogType.Error, $"{System.IO.Path.GetFileName(Assembly.GetExecutingAssembly().Location)} {PluginMeasure.PluginMeasureType}={measureType} not valid.");
             TypeEnum = typeEnum;
         }
 
         public override string ToString() => $"{GetType().Name.Replace("Measure", "")}[{TypeEnum.ToString()}]";
     }
 
-    public class SkinHandler
+    /// <summary>
+    /// Each instance of this class represents one Rainmeter Skin. This feature allow us to use one plugin for multiple skins, without a static Measure handler. See examples.
+    /// </summary>
+    internal class RainmeterSkinHandler : IDisposable
     {
-        static SkinHandler() { AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve; }
+        internal static RainmeterSkinHandler Empty => new RainmeterSkinHandler(IntPtr.Zero);
+
+        // -- Assembly dependency resolver. Store any required .dll in %MY_DOCUMENTS%\Rainmeter\Skins\%SKIN%.
+        static RainmeterSkinHandler() { AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve; }
         private static Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
         {
-            foreach (var entry in SkinHandlers)
+            foreach (var pair in RainmeterSkinHandlers)
             {
-                foreach(var entry2 in entry.Value.PluginSkins)
+                foreach(var pair2 in pair.Value.PluginSkins)
                 {
-                    var path = entry2.Value.Path + new AssemblyName(args.Name) + ".dll";
+                    var path = $"{pair2.Value.Path}{new AssemblyName(args.Name).Name}.dll";
                     if(File.Exists(path))
                         return Assembly.LoadFrom(path);
                 }
@@ -93,46 +115,45 @@ namespace Rainmeter
 
             return null;
         }
+        // -- Assembly dependency resolver. Store any required .dll in %MY_DOCUMENTS%\Rainmeter\Skins\%SKIN%.
 
-        // -- Each SkinHandler is unique for each Rainmeter's Skin IntPtr.
-        private static Dictionary<IntPtr, SkinHandler> SkinHandlers = new Dictionary<IntPtr, SkinHandler>();
-        public static SkinHandler GetSkinHandlerBySkinPtr(IntPtr skinPtr)
+        // -- RainmeterSkinHandler global list.
+        private static Dictionary<IntPtr, RainmeterSkinHandler> RainmeterSkinHandlers = new Dictionary<IntPtr, RainmeterSkinHandler>();
+        internal static RainmeterSkinHandler GetSkinHandlerBySkinPtr(IntPtr skinPtr)
         {
-            SkinHandler skinHandler;
-            if (!SkinHandlers.TryGetValue(skinPtr, out skinHandler))
-            {
-                SkinHandlers.Add(skinPtr, (skinHandler = new SkinHandler(skinPtr)));
-            }
-
+            RainmeterSkinHandler skinHandler;
+            if (!RainmeterSkinHandlers.TryGetValue(skinPtr, out skinHandler))
+                RainmeterSkinHandlers.Add(skinPtr, (skinHandler = new RainmeterSkinHandler(skinPtr)));
             return skinHandler;
         }
-        public static SkinHandler GetSkinHandlerByMeasurePtr(IntPtr data)
+        internal static RainmeterSkinHandler GetSkinHandlerByMeasurePtr(IntPtr data)
         {
-            foreach (var entry in SkinHandlers)
+            if (data == IntPtr.Zero)
+                return Empty;
+
+            foreach (var entry in RainmeterSkinHandlers)
             {
                 if (entry.Value.MeasureToSkinRef.ContainsKey(data))
-                {
                     return entry.Value;
-                }
             }
 
             return null;
         }
-        // -- Each SkinHandler is unique for each Rainmeter's Skin IntPtr.
+        // -- RainmeterSkinHandler global list.
 
         // -- Creating instances of implemented classes by known scheme.
-        private static Type GetPluginSkinType(string measureType) => Assembly.GetCallingAssembly().GetTypes().Single(assembly => assembly.Name.ToLowerInvariant() == $"{measureType}Skin".ToLowerInvariant());
+        private static Type GetPluginSkinType(string measureType) => Assembly.GetCallingAssembly().GetTypes().SingleOrDefault(assembly => assembly.Name.ToLowerInvariant() == $"{measureType}Skin".ToLowerInvariant());
         private static PluginSkin CreatePluginSkin(string measureType, RainmeterAPI api) => (PluginSkin) Activator.CreateInstance(GetPluginSkinType(measureType), new object[] { api });
-        private static Type GetPluginMeasureType(string measureType) => Assembly.GetCallingAssembly().GetTypes().Single(assembly => assembly.Name.ToLowerInvariant() == $"{measureType}Measure".ToLowerInvariant());
+        private static Type GetPluginMeasureType(string measureType) => Assembly.GetCallingAssembly().GetTypes().SingleOrDefault(assembly => assembly.Name.ToLowerInvariant() == $"{measureType}Measure".ToLowerInvariant());
         private static PluginMeasure CreatePluginMeasure(string measureType, string pluginType, PluginSkin skin, RainmeterAPI api) => (PluginMeasure) Activator.CreateInstance(GetPluginMeasureType(measureType), new object[] { pluginType, skin, api });
         // -- Creating instances of implemented classes by known scheme.
 
         // -- Fast references, without them we would need to make .Contains() call to each skin.
         private Dictionary<IntPtr, PluginSkin> MeasureToSkinRef = new Dictionary<IntPtr, PluginSkin>();
         private PluginMeasure GetPluginMeasureType(IntPtr ptr) => MeasureToSkinRef[ptr].PluginMeasureTypes[ptr];
-        private void AddPluginMeasure(IntPtr ptr, Type type, PluginMeasure pluginMeasure)
+        private void AddPluginMeasure(IntPtr ptr, PluginSkin skin, PluginMeasure pluginMeasure)
         {
-            MeasureToSkinRef.Add(ptr, PluginSkins[type]);
+            MeasureToSkinRef.Add(ptr, skin);
             MeasureToSkinRef[ptr].PluginMeasureTypes.Add(ptr, pluginMeasure);
         }
         private void RemovePluginMeasure(IntPtr ptr)
@@ -147,42 +168,75 @@ namespace Rainmeter
 
         private Dictionary<Type, PluginSkin> PluginSkins = new Dictionary<Type, PluginSkin>();
 
-        public SkinHandler(IntPtr skinPtr)
-        {
-            SkinPtr = skinPtr;
-        }
+        internal RainmeterSkinHandler(IntPtr skinPtr) { SkinPtr = skinPtr; }
         
-        public IntPtr Initialize(RainmeterAPI api)
+        internal IntPtr M_Initialize(RainmeterAPI api)
         {
-            var measureType = api.ReadString("MeasureType", string.Empty);
-            var pluginType = api.ReadString("PluginType", string.Empty);
-            var pluginMeasureType = GetPluginMeasureType(measureType);
-
-            if (!PluginSkins.ContainsKey(pluginMeasureType))
+            var pluginMeasureName = api.ReadString(PluginMeasure.PluginMeasureName, string.Empty);
+            var pluginMeasureType = api.ReadString(PluginMeasure.PluginMeasureType, string.Empty);
+            var pluginMeasureTypeType = GetPluginMeasureType(pluginMeasureName);
+            if (pluginMeasureTypeType == null)
             {
-                var skin = CreatePluginSkin(measureType, api);
-                PluginSkins.Add(pluginMeasureType, skin);
+                if(string.IsNullOrEmpty(pluginMeasureName))
+                    RainmeterAPI.Log(RainmeterAPI.LogType.Error, $"{PluginMeasure.PluginMeasureName}= Not found.");
+
+                if (string.IsNullOrEmpty(pluginMeasureType))
+                    RainmeterAPI.Log(RainmeterAPI.LogType.Error, $"{PluginMeasure.PluginMeasureType}= Not found.");
+
+                if(!string.IsNullOrEmpty(pluginMeasureName) && !string.IsNullOrEmpty(pluginMeasureType))
+                    RainmeterAPI.Log(RainmeterAPI.LogType.Error, $"Missing .dll's");
+
+                return IntPtr.Zero;
+            }
+
+            if (!PluginSkins.ContainsKey(pluginMeasureTypeType))
+            {
+                var skin = CreatePluginSkin(pluginMeasureName, api);
+                PluginSkins.Add(pluginMeasureTypeType, skin);
                 skin.Created();
             }
 
-            var pluginMeasure = CreatePluginMeasure(measureType, pluginType, PluginSkins[pluginMeasureType], api);
+            var pluginMeasure = CreatePluginMeasure(pluginMeasureName, pluginMeasureType, PluginSkins[pluginMeasureTypeType], api);
             var ptr = GCHandle.ToIntPtr(GCHandle.Alloc(pluginMeasure));
-            AddPluginMeasure(ptr, pluginMeasureType, pluginMeasure);
+            AddPluginMeasure(ptr, PluginSkins[pluginMeasureTypeType], pluginMeasure);
             return ptr;
         }
-
-        public void Reload(IntPtr measurePtr, RainmeterAPI api, ref double maxValue) => GetPluginMeasureType(measurePtr).Reload(api, ref maxValue);
-
-        public double GetNumeric(IntPtr measurePtr) => GetPluginMeasureType(measurePtr).GetNumeric();
-        public string GetString(IntPtr measurePtr) => GetPluginMeasureType(measurePtr).GetString();
-
-        public void ExecuteBang(IntPtr measurePtr, string args) => GetPluginMeasureType(measurePtr).ExecuteBang(args);
-
-        public void Finalize(IntPtr measurePtr)
+        internal void   M_Reload(IntPtr measurePtr, RainmeterAPI api, ref double maxValue)
         {
+            if (measurePtr == IntPtr.Zero)
+                return;
+
+            GetPluginMeasureType(measurePtr).Reload(api, ref maxValue);
+        }
+        internal double M_GetNumeric(IntPtr measurePtr)
+        {
+            if (measurePtr == IntPtr.Zero)
+                return 0.0;
+
+            return GetPluginMeasureType(measurePtr).GetNumeric();
+        }
+        internal string M_GetString(IntPtr measurePtr)
+        {
+            if (measurePtr == IntPtr.Zero)
+                return string.Empty;
+
+            return GetPluginMeasureType(measurePtr).GetString();
+        }
+        internal void   M_ExecuteBang(IntPtr measurePtr, string args)
+        {
+            if (measurePtr == IntPtr.Zero)
+                return;
+
+            GetPluginMeasureType(measurePtr).ExecuteBang(args);
+        }
+        internal void   M_Finalize(IntPtr measurePtr)
+        {
+            if (measurePtr == IntPtr.Zero)
+                return;
+
             GetPluginMeasureType(measurePtr).Finalize();
 
-
+            
             RemovePluginMeasure(measurePtr);
 
             List<Type> removeList = new List<Type>();
@@ -195,9 +249,15 @@ namespace Rainmeter
                 }
             }
             foreach (var type in removeList)
-            {
                 PluginSkins.Remove(type);
-            }
+
+            if (PluginSkins.Count == 0)
+                Dispose();
+        }
+
+        public void Dispose()
+        {
+            RainmeterSkinHandlers.Remove(SkinPtr);
         }
     }
 
@@ -209,10 +269,7 @@ namespace Rainmeter
     {
         private IntPtr m_Rm;
 
-        public RainmeterAPI(IntPtr rm)
-        {
-            m_Rm = rm;
-        }
+        public RainmeterAPI(IntPtr rm) { m_Rm = rm; }
 
         [DllImport("Rainmeter.dll", CharSet = CharSet.Unicode)]
         private extern static IntPtr RmReadString(IntPtr rm, string option, string defValue, bool replaceMeasures);
@@ -252,62 +309,32 @@ namespace Rainmeter
             Debug = 4
         }
 
-        public string ReadString(string option, string defValue, bool replaceMeasures = true)
-        {
-            return Marshal.PtrToStringUni(RmReadString(m_Rm, option, defValue, replaceMeasures));
-        }
+        public string ReadString(string option, string defValue, bool replaceMeasures = true) => Marshal.PtrToStringUni(RmReadString(m_Rm, option, defValue, replaceMeasures));
 
-        public string ReadPath(string option, string defValue)
-        {
-            return Marshal.PtrToStringUni(RmPathToAbsolute(m_Rm, ReadString(option, defValue)));
-        }
+        public string ReadPath(string option, string defValue) => Marshal.PtrToStringUni(RmPathToAbsolute(m_Rm, ReadString(option, defValue)));
 
-        public double ReadDouble(string option, double defValue)
-        {
-            return RmReadFormula(m_Rm, option, defValue);
-        }
+        public double ReadDouble(string option, double defValue) => RmReadFormula(m_Rm, option, defValue);
 
-        public int ReadInt(string option, int defValue)
-        {
-            return (int)RmReadFormula(m_Rm, option, defValue);
-        }
+        public int ReadInt(string option, int defValue) => (int) RmReadFormula(m_Rm, option, defValue);
 
-        public string ReplaceVariables(string str)
-        {
-            return Marshal.PtrToStringUni(RmReplaceVariables(m_Rm, str));
-        }
+        public string ReplaceVariables(string str) => Marshal.PtrToStringUni(RmReplaceVariables(m_Rm, str));
 
-        public string GetMeasureName()
-        {
-            return Marshal.PtrToStringUni(RmGet(m_Rm, RmGetType.MeasureName));
-        }
+        public string GetMeasureName() => Marshal.PtrToStringUni(RmGet(m_Rm, RmGetType.MeasureName));
 
-        public IntPtr GetSkin()
-        {
-            return RmGet(m_Rm, RmGetType.Skin);
-        }
+        public IntPtr GetSkin() => RmGet(m_Rm, RmGetType.Skin);
 
-        public string GetSettingsFile()
-        {
-            return Marshal.PtrToStringUni(RmGet(m_Rm, RmGetType.SettingsFile));
-        }
+        public string GetSettingsFile() => Marshal.PtrToStringUni(RmGet(m_Rm, RmGetType.SettingsFile));
 
-        public string GetSkinName()
-        {
-            return Marshal.PtrToStringUni(RmGet(m_Rm, RmGetType.SkinName));
-        }
+        public string GetSkinName() => Marshal.PtrToStringUni(RmGet(m_Rm, RmGetType.SkinName));
 
-        public IntPtr GetSkinWindow()
-        {
-            return RmGet(m_Rm, RmGetType.SkinWindowHandle);
-        }
+        public IntPtr GetSkinWindow() => RmGet(m_Rm, RmGetType.SkinWindowHandle);
 
-        public static void Log(LogType type, string message)
-        {
-            LSLog(type, null, message);
-        }
+        public static void Log(LogType type, string message) => LSLog(type, null, message);
     }
 
+    /// <summary>
+    /// Wrapper around the Rainmeter Plugin C API.
+    /// </summary>
     public static class PluginAPI
     {
         private static IntPtr StringBuffer = IntPtr.Zero;
@@ -316,36 +343,36 @@ namespace Rainmeter
         public static void Initialize(ref IntPtr measurePtr, IntPtr apiPtr)
         {
             RainmeterAPI api = new RainmeterAPI(apiPtr);
-            SkinHandler skinHandler = SkinHandler.GetSkinHandlerBySkinPtr(api.GetSkin());
-            measurePtr = skinHandler.Initialize(api);
+            RainmeterSkinHandler skinHandler = RainmeterSkinHandler.GetSkinHandlerBySkinPtr(api.GetSkin());
+            measurePtr = skinHandler.M_Initialize(api);
         }
 
         [DllExport]
         public static void Reload(IntPtr measurePtr, IntPtr apiPtr, ref double maxValue)
         {
             RainmeterAPI api = new RainmeterAPI(apiPtr);
-            SkinHandler skinHandler = SkinHandler.GetSkinHandlerBySkinPtr(api.GetSkin());
-            skinHandler.Reload(measurePtr, api, ref maxValue);
+            RainmeterSkinHandler skinHandler = RainmeterSkinHandler.GetSkinHandlerBySkinPtr(api.GetSkin());
+            skinHandler.M_Reload(measurePtr, api, ref maxValue);
         }
 
         [DllExport]
         public static double Update(IntPtr measurePtr)
         {
-            SkinHandler skinHandler = SkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
-            return skinHandler.GetNumeric(measurePtr);
+            RainmeterSkinHandler skinHandler = RainmeterSkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
+            return skinHandler.M_GetNumeric(measurePtr);
         }
 
         [DllExport]
         public static IntPtr GetString(IntPtr measurePtr)
         {
-            SkinHandler skinHandler = SkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
+            RainmeterSkinHandler skinHandler = RainmeterSkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
             if (StringBuffer != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(StringBuffer);
                 StringBuffer = IntPtr.Zero;
             }
 
-            string stringValue = skinHandler.GetString(measurePtr);
+            string stringValue = skinHandler.M_GetString(measurePtr);
             if (stringValue != null)
                 StringBuffer = Marshal.StringToHGlobalUni(stringValue);
 
@@ -355,17 +382,18 @@ namespace Rainmeter
         [DllExport]
         public static void ExecuteBang(IntPtr measurePtr, IntPtr argsPtr)
         {
-            SkinHandler skinHandler = SkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
-            skinHandler.ExecuteBang(measurePtr, Marshal.PtrToStringUni(argsPtr));
+            RainmeterSkinHandler skinHandler = RainmeterSkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
+            skinHandler.M_ExecuteBang(measurePtr, Marshal.PtrToStringUni(argsPtr));
         }
 
         [DllExport]
         public static void Finalize(IntPtr measurePtr)
         {
-            SkinHandler skinHandler = SkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
-            skinHandler.Finalize(measurePtr);
+            RainmeterSkinHandler skinHandler = RainmeterSkinHandler.GetSkinHandlerByMeasurePtr(measurePtr);
+            skinHandler.M_Finalize(measurePtr);
 
-            GCHandle.FromIntPtr(measurePtr).Free();
+            if(measurePtr != IntPtr.Zero)
+                GCHandle.FromIntPtr(measurePtr).Free();
 
             if (StringBuffer != IntPtr.Zero)
             {
