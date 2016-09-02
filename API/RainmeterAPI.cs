@@ -35,8 +35,10 @@ namespace Rainmeter
         internal PluginSkin() { }
         public PluginSkin(RainmeterAPI api)
         {
-            Path = api.ReadPath(PluginMeasure.PluginMeasureName, "");
-            Path = Path.Replace("\\" + Path.Split('\\')[7], "\\");
+            // -- We need to remove the last directory from path.
+            var path = api.ReadPath(PluginMeasure.PluginMeasureName, string.Empty);
+            var dir = Directory.GetParent(path.EndsWith("\\") ? path : string.Concat(path, "\\"));
+            Path = dir.Parent.FullName;
         }
 
         public abstract void Created();
@@ -110,7 +112,7 @@ namespace Rainmeter
             foreach (var skinHandlers in SkinHandlerBySkinPtr.Values)
                 foreach (var pluginSkin in skinHandlers.PluginSkins.Values)
                 {
-                    var path = string.Format("{0}{1}.dll", pluginSkin.Path, new AssemblyName(args.Name).Name);
+                    var path = Path.Combine(pluginSkin.Path, $"{new AssemblyName(args.Name).Name}.dll");
                     if (File.Exists(path))
                         return Assembly.LoadFrom(path);
                 }
