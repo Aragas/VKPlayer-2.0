@@ -13,18 +13,18 @@ using VkNet.Model.RequestParams;
 using VKPlayer.AudioPlayer;
 using VKPlayer.Plugin;
 
-namespace Rainmeter.AudioPlayer
+namespace RainMeasure.AudioPlayer
 {
 
-    public static class Player
+    public class Player
     {
-        private static AudioDownloader AudioDownloader;
-        private static WaveChannel32 AudioStream;
-        private static WaveOut OutputDevice = new WaveOut();
-        
-        private static int _currentIndex;
-        private static List<Audio> _audioList;
-        private static List<Audio> AudioList
+        private AudioDownloader AudioDownloader;
+        private WaveChannel32 AudioStream;
+        private WaveOut OutputDevice = new WaveOut();
+
+        private int _currentIndex;
+        private List<Audio> _audioList;
+        private List<Audio> AudioList
         {
             get
             {
@@ -32,8 +32,8 @@ namespace Rainmeter.AudioPlayer
                     return _audioList;
 
                 User user;
-                AudioGetParams @params = new AudioGetParams { OwnerId = MeasureHandler.API.UserId };
-                _audioList = new List<Audio>(MeasureHandler.API.Audio.Get(out user, @params));
+                AudioGetParams @params = new AudioGetParams { OwnerId = ((AudioPlayerSkin) Skin).ShitHandler.API.UserId };
+                _audioList = new List<Audio>(((AudioPlayerSkin) Skin).ShitHandler.API.Audio.Get(out user, @params));
                 return _audioList;
             }
         }
@@ -41,11 +41,11 @@ namespace Rainmeter.AudioPlayer
 
         #region Variables
 
-        public static bool Repeat = false;
-        public static bool Shuffle = false;
-        public static bool SaveToFile = false;
+        public bool Repeat = false;
+        public bool Shuffle = false;
+        public bool SaveToFile = false;
 
-        public static string Artist
+        public string Artist
         {
             get
             {
@@ -54,7 +54,7 @@ namespace Rainmeter.AudioPlayer
                 return string.Empty;
             }
         }
-        public static string Title
+        public string Title
         {
             get
             {
@@ -64,9 +64,9 @@ namespace Rainmeter.AudioPlayer
             }
         }
 
-        private static Uri Url => AudioList[_currentIndex].Url;
+        private Uri Url => AudioList[_currentIndex].Url;
 
-        public static double Duration
+        public double Duration
         {
             get
             {
@@ -75,7 +75,7 @@ namespace Rainmeter.AudioPlayer
                 return 0.0;
             }
         }
-        public static double Position
+        public double Position
         {
             get
             {
@@ -85,7 +85,7 @@ namespace Rainmeter.AudioPlayer
                 return AudioStream.CurrentTime.TotalSeconds;
             }
         }
-        public static double Progress
+        public double Progress
         {
             get
             {
@@ -97,15 +97,28 @@ namespace Rainmeter.AudioPlayer
             }
         }
 
-        public static PlaybackState PlayingState => OutputDevice.PlaybackState;
+        public PlaybackState PlayingState => OutputDevice.PlaybackState;
 
-        public static float Volume { get { return AudioStream.Volume; } private set { AudioStream.Volume = value; } }
+        public float Volume { get { return AudioStream.Volume; } private set { AudioStream.Volume = value; } }
 
         #endregion Variables
 
+        private PluginSkin Skin { get; }
+        public string AudioCache
+        {
+            get
+            {
+                if (!Directory.Exists(System.IO.Path.Combine(Skin.Path, "AudioCache")))
+                    Directory.CreateDirectory(System.IO.Path.Combine(Skin.Path, "AudioCache"));
+                return System.IO.Path.Combine(Skin.Path, "AudioCache");
+            }
+        }
+
+        public Player(PluginSkin skin) { Skin = skin; }
+
         #region Execute
 
-        public static void Execute(string command)
+        public void Execute(string command)
         {
             if (command == "PlayPause") ManagePlay();
             else if (command == "Play") ManagePlay();
@@ -120,7 +133,7 @@ namespace Rainmeter.AudioPlayer
             else if (command.Contains("SetPosition")) SetPosition(command.Remove(0, 12));
         }
 
-        private static void ManagePlay()
+        private void ManagePlay()
         {
             switch (PlayingState)
             {
@@ -138,11 +151,11 @@ namespace Rainmeter.AudioPlayer
             }
         }
 
-        private static void Play()
+        private void Play()
         {
             AudioDownloader?.Stop();
 
-            if(File.Exists(Path.Combine(Measure.AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
+            if(File.Exists(Path.Combine(AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
             {
                 PlayFromCache();
                 return;
@@ -154,9 +167,9 @@ namespace Rainmeter.AudioPlayer
 
             AudioDownloader.DownloadAsync();
         }
-        private static void PlayFromCache()
+        private void PlayFromCache()
         {
-            using (var fs = File.OpenRead(Path.Combine(Measure.AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
+            using (var fs = File.OpenRead(Path.Combine(AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
             {
                 if (PlayingState != PlaybackState.Stopped)
                     OutputDevice.Stop();
@@ -168,7 +181,7 @@ namespace Rainmeter.AudioPlayer
                 OutputDevice.Play();
             }
         }
-        private static void Downloader_PreDownloaded(AudioDownloader downloader)
+        private void Downloader_PreDownloaded(AudioDownloader downloader)
         {
             if (PlayingState != PlaybackState.Stopped)
                 OutputDevice.Stop();
@@ -180,32 +193,32 @@ namespace Rainmeter.AudioPlayer
             AudioStream.Volume = new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).AudioEndpointVolume.MasterVolumeLevelScalar;
             OutputDevice.Play();
         }
-        private static void Downloader_Downloaded(AudioDownloader downloader)
+        private void Downloader_Downloaded(AudioDownloader downloader)
         {
             if(SaveToFile)
             {
-                using (var fs = File.Create(Path.Combine(Measure.AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
+                using (var fs = File.Create(Path.Combine(AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
                 {
                     downloader.Stream.CopyTo(fs);
                 }
             }
         }
-        private static void Pause()
+        private void Pause()
         {
             OutputDevice.Pause();
         }
-        private static void Resume()
+        private void Resume()
         {
             OutputDevice.Resume();
         }
-        private static void Stop()
+        private void Stop()
         {
             AudioDownloader?.Stop();
             OutputDevice.Stop();
         }
 
         // Still not working.
-        private static void SetPosition(string text)
+        private void SetPosition(string text)
         {
             double value;
 
@@ -227,7 +240,7 @@ namespace Rainmeter.AudioPlayer
             }
         }
 
-        private static void PlayPrevious()
+        private void PlayPrevious()
         {
             if (_currentIndex <= 0)
                 return;
@@ -236,7 +249,7 @@ namespace Rainmeter.AudioPlayer
 
             Play();
         }
-        private static void PlayNext()
+        private void PlayNext()
         {
             if (_currentIndex >= AudioList.Count)
                 return;
@@ -246,7 +259,7 @@ namespace Rainmeter.AudioPlayer
             Play();
         }
 
-        private static void SetVolume(string text)
+        private void SetVolume(string text)
         {
             float value;
 
@@ -263,7 +276,7 @@ namespace Rainmeter.AudioPlayer
                 AudioStream.Volume = value / 100f;
             }
         }
-        private static void ChangeVolume(float value)
+        private void ChangeVolume(float value)
         {
             if (Volume + value >= 1.0f)
             {
@@ -280,7 +293,7 @@ namespace Rainmeter.AudioPlayer
             Volume += value;
         }
 
-        private static void SetShuffle(string value)
+        private void SetShuffle(string value)
         {
             switch (value)
             {
@@ -302,7 +315,7 @@ namespace Rainmeter.AudioPlayer
                     break;
             }
         }
-        private static void SetRepeat(string value)
+        private void SetRepeat(string value)
         {
             switch (value)
             {
@@ -324,7 +337,7 @@ namespace Rainmeter.AudioPlayer
                     break;
             }
         }
-        private static void SetSaveToFile(string value)
+        private void SetSaveToFile(string value)
         {
             switch (value)
             {

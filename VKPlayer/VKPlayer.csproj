@@ -150,7 +150,6 @@
     <Compile Include="Plugin\Measure.cs" />
     <Compile Include="$(SolutionDir)..\API\RainmeterAPI.cs" />
     <Compile Include="AudioPlayer\Player.cs" />
-    <Compile Include="Plugin\MeasureHandler.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
