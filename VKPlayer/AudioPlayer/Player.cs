@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading;
 
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -15,14 +12,14 @@ using VkNet.Model.Attachments;
 using VkNet.Model.RequestParams;
 
 using VKPlayer.AudioPlayer;
-using VKPlayer.Plugin;
+using System.Threading;
 
 namespace VKPlayer.Plugin
 {
 
     public class Player : IDisposable
     {
-        private AudioDownloader AudioDownloader;
+        private AudioDownloader AudioDownloader = new AudioDownloader();
         private WaveChannel32 AudioStream;
         private WaveOut OutputDevice = new WaveOut();
 
@@ -159,19 +156,16 @@ namespace VKPlayer.Plugin
 
         private void Play()
         {
-            AudioDownloader?.Stop();
-
             if(File.Exists(Path.Combine(AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
             {
                 PlayFromCache();
                 return;
             }
 
-            AudioDownloader = new AudioDownloader(Url);
             AudioDownloader.PreDownloaded += Downloader_PreDownloaded;
             AudioDownloader.Downloaded += Downloader_Downloaded;
 
-            AudioDownloader.DownloadAsync();
+            AudioDownloader.Download(Url);
         }
         private void PlayFromCache()
         {
@@ -187,25 +181,50 @@ namespace VKPlayer.Plugin
                 OutputDevice.Play();
             }
         }
-        private void Downloader_PreDownloaded(AudioDownloader downloader)
+        private void Downloader_PreDownloaded(SimultaneousStream stream)
         {
             if (PlayingState != PlaybackState.Stopped)
                 OutputDevice.Stop();
 
-            OutputDevice.Dispose();
-            OutputDevice = new WaveOut();
-            AudioStream = new WaveChannel32(new Mp3FileReader(downloader.Stream)) { PadWithZeroes = false };
+            AudioStream?.Dispose();
+
+            stream.Position = 0; // -- for some reason first bytes are skipped.
+            #region Not even apologizing for it.
+            // -- Some MP3 files have huge attached images. I've done a limit up to 2 MB.
+            int readSize = 64 * 1024;
+            Mp3FileReader mp3Stream = null;
+            tryRead: // goto if ya friend!
+            try { mp3Stream = new Mp3FileReader(stream); }
+            catch (InvalidDataException)
+            {
+                readSize += 64 * 1024; // 64 KB.
+
+                int attempts = 0;
+                while(stream.Length < readSize) { attempts++; if (attempts > 20) goto skipCurrent; Thread.Sleep(50); } // -- not using break because it's likely that the download stopped
+
+                if(readSize < 2048 * 1024) // 2 MB.
+                    goto tryRead; 
+
+                skipCurrent:
+                if (_currentIndex > 0)
+                    PlayPrevious();
+                else
+                    PlayNext();
+            }
+            #endregion Not even apologizing for it
+
+            AudioStream = new WaveChannel32(mp3Stream) { PadWithZeroes = false };
             OutputDevice.Init(AudioStream);
             AudioStream.Volume = new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).AudioEndpointVolume.MasterVolumeLevelScalar;
             OutputDevice.Play();
         }
-        private void Downloader_Downloaded(AudioDownloader downloader)
+        private void Downloader_Downloaded(SimultaneousStream stream)
         {
             if(SaveToFile)
             {
                 using (var fs = File.Create(Path.Combine(AudioCache, AudioList[_currentIndex].Id.Value.ToString())))
                 {
-                    downloader.Stream.CopyTo(fs);
+                    stream.CopyTo(fs);
                 }
             }
         }
@@ -219,7 +238,7 @@ namespace VKPlayer.Plugin
         }
         private void Stop()
         {
-            AudioDownloader?.Stop();
+            AudioDownloader?.StopAnyDownload();
             OutputDevice.Stop();
         }
 
@@ -365,7 +384,7 @@ namespace VKPlayer.Plugin
 
         public void Dispose()
         {
-            AudioDownloader?.Stop();
+            AudioDownloader?.StopAnyDownload();
             AudioStream?.Dispose();
             OutputDevice?.Dispose();
 

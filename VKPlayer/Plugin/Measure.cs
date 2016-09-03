@@ -1,10 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 
 using Rainmeter;
 
@@ -12,7 +6,6 @@ using VkNet;
 using VkNet.Enums.Filters;
 using VkNet.Exception;
 
-using VKPlayer.AudioPlayer;
 using VKPlayer.Forms;
 
 namespace VKPlayer.Plugin
@@ -59,6 +52,7 @@ namespace VKPlayer.Plugin
                 });
             }
             catch (VkApiAuthorizationException) { }
+            catch (UriFormatException) { }
         }
         public override void Closed()
         {

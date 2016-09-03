@@ -17,32 +17,38 @@ namespace VKPlayer.AudioPlayer
         {
             get
             {
-                switch (Mode)
+                lock (_innerStream)
                 {
-                    case PositionMode.FromRead:
-                        return _readPosition;
+                    switch (Mode)
+                    {
+                        case PositionMode.FromRead:
+                            return _readPosition;
 
-                    case PositionMode.FromWrite:
-                        return _writePosition;
+                        case PositionMode.FromWrite:
+                            return _writePosition;
 
-                    default:
-                        throw new NotSupportedException();
+                        default:
+                            throw new NotSupportedException();
+                    }
                 }
             }
             set
             {
-                switch (Mode)
+                lock (_innerStream)
                 {
-                    case PositionMode.FromRead:
-                        _readPosition = value;
-                        break;
+                    switch (Mode)
+                    {
+                        case PositionMode.FromRead:
+                            _readPosition = value;
+                            break;
 
-                    case PositionMode.FromWrite:
-                        _writePosition = value;
-                        break;
+                        case PositionMode.FromWrite:
+                            _writePosition = value;
+                            break;
 
-                    default:
-                        throw new NotSupportedException();
+                        default:
+                            throw new NotSupportedException();
+                    }
                 }
             }
         }

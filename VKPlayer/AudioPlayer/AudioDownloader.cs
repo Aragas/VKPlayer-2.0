@@ -2,56 +2,72 @@
 using System.IO;
 using System.Net;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace VKPlayer.AudioPlayer
 {
     public class AudioDownloader
     {
-        public event Action<AudioDownloader> PreDownloaded;
-        public event Action<AudioDownloader> Downloaded;
-
-        public Uri URL { get; set; }
-        public SimultaneousStream Stream { get; set; }
+        public event Action<SimultaneousStream> PreDownloaded;
+        public event Action<SimultaneousStream> Downloaded;
 
         public bool WasStopped => !NeedsToBeStopped;
         private bool NeedsToBeStopped;
 
+        private Thread _downloader;
 
-        public AudioDownloader(Uri url)
+
+        public void Download(Uri url)
         {
-            URL = url;
-            Stream = new SimultaneousStream(SimultaneousStream.PositionMode.FromRead);
+            if (_downloader != null && _downloader.IsAlive)
+            {
+                StopAnyDownload();
+
+                Thread.Sleep(50);
+                if (_downloader.IsAlive)
+                    _downloader.Abort();
+            }
+
+            _downloader = new Thread(() => Downloader(url));
+            _downloader.Start();
         }
-
-
-        public async Task DownloadAsync()
+        private void Downloader(Uri url)
         {
-            using (WebResponse response = await WebRequest.Create(URL).GetResponseAsync())
-            using (Stream stream = response.GetResponseStream())
+            var downloadedStream = new SimultaneousStream(SimultaneousStream.PositionMode.FromRead);
+
+            using (WebResponse response = ((HttpWebRequest) WebRequest.Create(url)).GetResponse())
+            using (Stream stream = ((HttpWebResponse) response).GetResponseStream())
             {
                 bool preDownloaded = false;
 
-                var buffer = new byte[32 * 1024]; // 32Kb chunks
+                var buffer = new byte[16 * 1024]; // 16Kb chunks
                 int read;
-                while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
                 {
                     if (NeedsToBeStopped)
+                    {
+                        NeedsToBeStopped = false;
                         return;
+                    }
 
-                    await Stream.WriteAsync(buffer, 0, read);
+                    downloadedStream.Write(buffer, 0, read);
 
-                    if (Stream.Length > 32 * 1024 && !preDownloaded)
+                    if (downloadedStream.Length > 64 * 1024 && !preDownloaded)
                     {
                         preDownloaded = true;
-                        PreDownloaded?.Invoke(this);
+                        new Thread(() => PreDownloaded?.Invoke(downloadedStream)).Start();
                     }
                 }
+                if(!preDownloaded)
+                {
+                    preDownloaded = true;
+                    new Thread(() => PreDownloaded?.Invoke(downloadedStream)).Start();
+                }
 
-                Downloaded?.Invoke(this);
+                Downloaded?.Invoke(downloadedStream);
             }
         }
-        public void Stop()
+
+        public void StopAnyDownload()
         {
             NeedsToBeStopped = true;
         }
