@@ -1,6 +1,6 @@
 ﻿using System;
 
-using Rainmeter;
+using RainManager;
 
 using VkNet;
 using VkNet.Enums.Filters;
@@ -20,10 +20,7 @@ namespace VKPlayer.Plugin
         internal VkApi API { get; set; }
         internal VKAuthorization AuthorizationForm { get; set; }
 
-
-        public AudioPlayerSkin(RainmeterAPI api) : base(api) { }
-
-        public override void Created()
+        public AudioPlayerSkin(RainmeterSkinHandler skinHandler, RainmeterAPI api) : base(skinHandler, api)
         {
             API = new VkApi();
             API.OnTokenExpires += API_OnTokenExpires;
@@ -54,7 +51,8 @@ namespace VKPlayer.Plugin
             catch (VkApiAuthorizationException) { }
             catch (UriFormatException) { }
         }
-        public override void Closed()
+
+        public override void Dispose()
         {
             AudioPlayer.Dispose();
         }
@@ -99,12 +97,11 @@ namespace VKPlayer.Plugin
     /// <summary>
     /// Each skin has multiple instances of this class, one for each meter.
     /// </summary>
-    public class AudioPlayerMeasure : PluginMeasure<AudioPlayerMeasureEnum>
+    public class AudioPlayerMeasure : PluginMeasure<AudioPlayerSkin, AudioPlayerMeasureEnum>
     {
-        public AudioPlayerSkin AudioPlayerSkin => (AudioPlayerSkin) Skin;
-        public Player Player => AudioPlayerSkin.AudioPlayer;
+        public Player Player => Skin.AudioPlayer;
 
-        public AudioPlayerMeasure(string pluginType, PluginSkin skin, RainmeterAPI api) : base(pluginType, skin, api) { }
+        public AudioPlayerMeasure(string pluginType, AudioPlayerSkin skin, RainmeterAPI api) : base(pluginType, skin, api) { }
 
         public override void Reload(RainmeterAPI api, ref double maxValue) { }
 
@@ -162,9 +159,9 @@ namespace VKPlayer.Plugin
             }
         }
 
-        public override void ExecuteBang(string command) { AudioPlayerSkin.ExecuteBang(command); }
+        public override void ExecuteBang(string command) { Skin.ExecuteBang(command); }
 
-        public override void Finalize()
+        public override void Dispose()
         {
 
         }

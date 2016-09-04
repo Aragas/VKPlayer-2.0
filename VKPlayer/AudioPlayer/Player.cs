@@ -5,7 +5,7 @@ using System.IO;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-using Rainmeter;
+using RainManager;
 
 using VkNet.Model;
 using VkNet.Model.Attachments;
